@@ -65,11 +65,21 @@ or verification requirement.
 
 ## Current Data Model
 
-- There is no database, API route, SQL store, Prisma schema, Supabase project,
-  or server-side persistence in this version.
-- Kanban data is stored in the browser using `localStorage`.
-- The storage key is `kanban-board:v1`.
-- The local data shape is:
+- Supabase-backed Postgres is the intended persistence layer for this project.
+- The app uses Next.js API routes under `app/api/kanban/` for all writes and
+  reads. Do not expose the service-role key to browser code.
+- The required server environment variables are `SUPABASE_URL` and
+  `SUPABASE_SERVICE_ROLE_KEY`. `NEXT_PUBLIC_SUPABASE_URL` and
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` are reserved for future client-side auth or
+  realtime work.
+- The initial schema and default board live in `supabase/migrations/`.
+- Local Supabase uses the `565xx` port block in `supabase/config.toml` to avoid
+  colliding with other local Supabase projects. Analytics is disabled locally
+  because this Kanban app does not use it and the local health check can slow
+  startup.
+- When Supabase is not configured or reachable, the board falls back to browser
+  `localStorage` with the storage key `kanban-board:v1`.
+- The product-level board shape is:
 
   ```ts
   type BoardState = Record<ColumnId, Task[]>
@@ -82,17 +92,17 @@ or verification requirement.
   }
   ```
 
-- Columns are defined by `COLUMN_ORDER` in `components/kanban-board.tsx`:
+- Columns are defined by `COLUMN_ORDER` in `lib/kanban/board.ts`:
   `ideas`, `on-deck`, `in-progress`, and `done`.
-- Any future database migration should preserve this product model first, then
-  add persistence deliberately.
+- Keep database, API, and local fallback behavior mapped to this product model
+  unless the product requirements intentionally change it.
 
 ## Kanban Product Rules
 
 - New tasks start in `Ideas`.
 - Users can move cards by drag/drop or by the card action menu.
-- Keep no-database behavior explicit in the UI until a real persistence layer is
-  introduced.
+- Keep persistence state explicit in the UI: Supabase when configured, browser
+  fallback otherwise.
 - If local storage parsing fails, the app should fall back safely to the sample
   board rather than crashing.
 

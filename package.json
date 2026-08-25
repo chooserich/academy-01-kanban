@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status -o env",
+    "supabase:reset": "supabase db reset"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -14,6 +18,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@supabase/supabase-js": "^2.112.4",
     "@tanstack/react-table": "^9.1.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -36,6 +41,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
+    "supabase": "^2.115.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   },

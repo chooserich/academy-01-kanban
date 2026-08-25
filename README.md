@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Academy Kanban
+
+A small Next.js, TypeScript, and shadcn/ui Kanban board with four columns:
+Ideas, On deck, In progress, and Done.
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies and run the app:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open the local URL reported by Next.js, usually
+[http://localhost:3000/dashboard](http://localhost:3000/dashboard).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Supabase Persistence
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The app uses Supabase Postgres when these values are present in `.env.local`:
 
-## Learn More
+```bash
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+```
 
-To learn more about Next.js, take a look at the following resources:
+To run Supabase locally:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pnpm supabase:start
+pnpm supabase:status
+pnpm supabase:reset
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Copy the `API_URL` from `pnpm supabase:status` into `SUPABASE_URL`, and copy
+the `SERVICE_ROLE_KEY` into `SUPABASE_SERVICE_ROLE_KEY`. Restart `pnpm dev`
+after changing `.env.local`.
 
-## Deploy on Vercel
+The first migration creates the `Project board` and the initial sample cards.
+If Supabase is not configured or reachable, the UI keeps working with browser
+`localStorage` as a fallback.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Useful Commands
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+pnpm lint
+pnpm build
+pnpm supabase:start
+pnpm supabase:status
+pnpm supabase:reset
+pnpm supabase:stop
+```
+
+## Notes
+
+This project uses Geist Sans and Geist Mono through `next/font/google`. Keep
+font token changes aligned with `AGENTS.md` so shadcn theme values do not fall
+back to browser serif fonts.
+
+Future agents should treat `AGENTS.md` as the durable project guide.

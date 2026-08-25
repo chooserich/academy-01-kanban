@@ -95,9 +95,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <div className="rounded-lg border bg-background p-3 text-xs text-muted-foreground">
               <div className="mb-1 flex items-center gap-2 font-medium text-foreground">
                 <DatabaseZapIcon className="size-4" />
-                No database
+                Persistence
               </div>
-              Tasks are stored in this browser only.
+              Supabase when configured, browser fallback otherwise.
             </div>
           </SidebarGroupContent>
         </SidebarGroup>

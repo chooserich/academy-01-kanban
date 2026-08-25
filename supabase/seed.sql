@@ -1,0 +1,2 @@
+-- The initial Kanban board is created by the first migration so local resets and
+-- remote migrations start from the same durable state.

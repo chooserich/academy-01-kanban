@@ -14,7 +14,6 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core"
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
@@ -56,22 +55,25 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  COLUMN_ORDER,
+  KANBAN_STORAGE_KEY,
+  addTaskToBoard,
+  clearDoneFromBoard,
+  cloneInitialBoard,
+  deleteTaskFromBoard,
+  findColumnForTask,
+  findTask,
+  isColumnId,
+  moveTaskInBoard,
+  normalizeBoard,
+  parseStoredBoard,
+  type BoardState,
+  type ColumnId,
+  type MoveTaskInput,
+  type Task,
+} from "@/lib/kanban/board"
 import { cn } from "@/lib/utils"
-
-const COLUMN_ORDER = ["ideas", "on-deck", "in-progress", "done"] as const
-
-type ColumnId = (typeof COLUMN_ORDER)[number]
-
-type Task = {
-  id: string
-  title: string
-  description: string
-  createdAt: string
-}
-
-type BoardState = Record<ColumnId, Task[]>
-
-const STORAGE_KEY = "kanban-board:v1"
 
 const COLUMNS: Record<
   ColumnId,
@@ -103,120 +105,58 @@ const COLUMNS: Record<
   },
 }
 
-const initialBoard: BoardState = {
-  ideas: [
-    {
-      id: "task-ideas-1",
-      title: "Collect feature ideas",
-      description: "Capture rough product ideas before choosing what matters.",
-      createdAt: "2026-08-18T14:00:00.000Z",
-    },
-  ],
-  "on-deck": [
-    {
-      id: "task-deck-1",
-      title: "Shape the first task flow",
-      description: "Decide what fields a lightweight task really needs.",
-      createdAt: "2026-08-18T14:05:00.000Z",
-    },
-  ],
-  "in-progress": [
-    {
-      id: "task-progress-1",
-      title: "Build the board shell",
-      description: "Use the shadcn dashboard layout as the workspace frame.",
-      createdAt: "2026-08-18T14:10:00.000Z",
-    },
-  ],
-  done: [
-    {
-      id: "task-done-1",
-      title: "Start without a database",
-      description: "Keep everything in local browser state for now.",
-      createdAt: "2026-08-18T14:15:00.000Z",
-    },
-  ],
+type StorageMode = "loading" | "supabase" | "browser"
+
+type KanbanApiResponse = {
+  board?: unknown
+  configured?: boolean
+  message?: string
 }
 
-function createEmptyBoard(): BoardState {
+function createBrowserTask(title: string, description: string): Task {
   return {
-    ideas: [],
-    "on-deck": [],
-    "in-progress": [],
-    done: [],
+    id:
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `task-${Date.now()}`,
+    title,
+    description,
+    createdAt: new Date().toISOString(),
   }
 }
 
-function isColumnId(value: string): value is ColumnId {
-  return COLUMN_ORDER.includes(value as ColumnId)
+async function readJsonResponse(response: Response): Promise<KanbanApiResponse> {
+  return (await response.json().catch(() => ({}))) as KanbanApiResponse
 }
 
-function isTask(value: unknown): value is Task {
-  if (!value || typeof value !== "object") {
-    return false
+async function requestSupabaseBoard(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Promise<BoardState> {
+  const response = await fetch(input, init)
+  const payload = await readJsonResponse(response)
+
+  if (!response.ok) {
+    throw new Error(payload.message ?? "The board could not be synced.")
   }
 
-  const task = value as Record<string, unknown>
+  const board = normalizeBoard(payload.board)
 
-  return (
-    typeof task.id === "string" &&
-    typeof task.title === "string" &&
-    typeof task.description === "string" &&
-    typeof task.createdAt === "string"
-  )
-}
-
-function parseStoredBoard(value: string | null): BoardState | null {
-  if (!value) {
-    return null
+  if (!board) {
+    throw new Error("Supabase returned an unexpected board shape.")
   }
 
-  try {
-    const parsed = JSON.parse(value) as Partial<Record<ColumnId, unknown>>
-    const nextBoard = createEmptyBoard()
-
-    for (const columnId of COLUMN_ORDER) {
-      const tasks = parsed[columnId]
-      nextBoard[columnId] = Array.isArray(tasks) ? tasks.filter(isTask) : []
-    }
-
-    return nextBoard
-  } catch {
-    return null
-  }
-}
-
-function findColumnForTask(board: BoardState, taskId: string): ColumnId | null {
-  return (
-    COLUMN_ORDER.find((columnId) =>
-      board[columnId].some((task) => task.id === taskId)
-    ) ?? null
-  )
-}
-
-function findTask(board: BoardState, taskId: string): Task | null {
-  const columnId = findColumnForTask(board, taskId)
-
-  if (!columnId) {
-    return null
-  }
-
-  return board[columnId].find((task) => task.id === taskId) ?? null
-}
-
-function cloneInitialBoard(): BoardState {
-  return {
-    ideas: [...initialBoard.ideas],
-    "on-deck": [...initialBoard["on-deck"]],
-    "in-progress": [...initialBoard["in-progress"]],
-    done: [...initialBoard.done],
-  }
+  return board
 }
 
 export function KanbanBoard() {
   const [board, setBoard] = React.useState<BoardState>(() => cloneInitialBoard())
   const [activeTaskId, setActiveTaskId] = React.useState<string | null>(null)
-  const [hasLoadedStorage, setHasLoadedStorage] = React.useState(false)
+  const [storageMode, setStorageMode] = React.useState<StorageMode>("loading")
+  const [isSaving, setIsSaving] = React.useState(false)
+  const [statusMessage, setStatusMessage] = React.useState(
+    "Connecting to Supabase..."
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -230,24 +170,68 @@ export function KanbanBoard() {
   )
 
   React.useEffect(() => {
-    queueMicrotask(() => {
-      const storedBoard = parseStoredBoard(
-        window.localStorage.getItem(STORAGE_KEY)
-      )
+    let didCancel = false
 
-      if (storedBoard) {
-        setBoard(storedBoard)
+    function loadBrowserFallback(message?: string) {
+      if (didCancel) {
+        return
       }
 
-      setHasLoadedStorage(true)
-    })
+      const storedBoard = parseStoredBoard(
+        window.localStorage.getItem(KANBAN_STORAGE_KEY)
+      )
+
+      setBoard(storedBoard ?? cloneInitialBoard())
+      setStorageMode("browser")
+      setStatusMessage(
+        message ?? "Using browser storage until Supabase is configured."
+      )
+    }
+
+    async function loadBoard() {
+      try {
+        const response = await fetch("/api/kanban", { cache: "no-store" })
+        const payload = await readJsonResponse(response)
+
+        if (!response.ok) {
+          throw new Error(payload.message ?? "Supabase could not be reached.")
+        }
+
+        if (!payload.configured) {
+          loadBrowserFallback(payload.message)
+          return
+        }
+
+        const nextBoard = normalizeBoard(payload.board)
+
+        if (!nextBoard) {
+          throw new Error("Supabase returned an unexpected board shape.")
+        }
+
+        if (!didCancel) {
+          setBoard(nextBoard)
+          setStorageMode("supabase")
+          setStatusMessage("Synced through Supabase Postgres.")
+        }
+      } catch {
+        loadBrowserFallback(
+          "Using browser storage until Supabase is reachable."
+        )
+      }
+    }
+
+    void loadBoard()
+
+    return () => {
+      didCancel = true
+    }
   }, [])
 
   React.useEffect(() => {
-    if (hasLoadedStorage) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(board))
+    if (storageMode === "browser") {
+      window.localStorage.setItem(KANBAN_STORAGE_KEY, JSON.stringify(board))
     }
-  }, [board, hasLoadedStorage])
+  }, [board, storageMode])
 
   const activeTask = activeTaskId ? findTask(board, activeTaskId) : null
   const totalTasks = COLUMN_ORDER.reduce(
@@ -255,74 +239,107 @@ export function KanbanBoard() {
     0
   )
   const doneTasks = board.done.length
+  const isPending = storageMode === "loading" || isSaving
+  const storageLabel =
+    storageMode === "supabase"
+      ? "Supabase"
+      : storageMode === "browser"
+        ? "Browser fallback"
+        : "Connecting"
 
-  function addTask(title: string, description: string) {
-    const task: Task = {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `task-${Date.now()}`,
-      title,
-      description,
-      createdAt: new Date().toISOString(),
+  async function syncBoard(
+    localUpdate: (currentBoard: BoardState) => BoardState,
+    request: () => Promise<BoardState>
+  ) {
+    setBoard((currentBoard) => localUpdate(currentBoard))
+
+    if (storageMode !== "supabase") {
+      return
     }
 
-    setBoard((currentBoard) => ({
-      ...currentBoard,
-      ideas: [task, ...currentBoard.ideas],
-    }))
+    setIsSaving(true)
+
+    try {
+      const nextBoard = await request()
+      setBoard(nextBoard)
+      setStatusMessage("Synced through Supabase Postgres.")
+    } catch {
+      setStorageMode("browser")
+      setStatusMessage(
+        "Supabase sync failed. Your latest change is saved in this browser."
+      )
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  function addTask(title: string, description: string) {
+    const task = createBrowserTask(title, description)
+
+    void syncBoard(
+      (currentBoard) => addTaskToBoard(currentBoard, task),
+      () =>
+        requestSupabaseBoard("/api/kanban/tasks", {
+          body: JSON.stringify({ description, title }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        })
+    )
   }
 
   function moveTask(taskId: string, targetColumnId: ColumnId) {
-    setBoard((currentBoard) => {
-      const sourceColumnId = findColumnForTask(currentBoard, taskId)
+    const moveInput: MoveTaskInput = {
+      placement: "start",
+      targetColumnId,
+      taskId,
+    }
 
-      if (!sourceColumnId || sourceColumnId === targetColumnId) {
-        return currentBoard
-      }
-
-      const task = currentBoard[sourceColumnId].find((item) => item.id === taskId)
-
-      if (!task) {
-        return currentBoard
-      }
-
-      return {
-        ...currentBoard,
-        [sourceColumnId]: currentBoard[sourceColumnId].filter(
-          (item) => item.id !== taskId
-        ),
-        [targetColumnId]: [task, ...currentBoard[targetColumnId]],
-      }
-    })
+    void syncBoard(
+      (currentBoard) => moveTaskInBoard(currentBoard, moveInput),
+      () =>
+        requestSupabaseBoard(`/api/kanban/tasks/${taskId}/move`, {
+          body: JSON.stringify(moveInput),
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH",
+        })
+    )
   }
 
   function deleteTask(taskId: string) {
-    setBoard((currentBoard) => {
-      const nextBoard = createEmptyBoard()
-
-      for (const columnId of COLUMN_ORDER) {
-        nextBoard[columnId] = currentBoard[columnId].filter(
-          (task) => task.id !== taskId
-        )
-      }
-
-      return nextBoard
-    })
+    void syncBoard(
+      (currentBoard) => deleteTaskFromBoard(currentBoard, taskId),
+      () =>
+        requestSupabaseBoard(`/api/kanban/tasks/${taskId}`, {
+          method: "DELETE",
+        })
+    )
   }
 
   function resetBoard() {
-    setBoard(cloneInitialBoard())
+    void syncBoard(
+      () => cloneInitialBoard(),
+      () =>
+        requestSupabaseBoard("/api/kanban/reset", {
+          method: "POST",
+        })
+    )
   }
 
   function clearDone() {
-    setBoard((currentBoard) => ({
-      ...currentBoard,
-      done: [],
-    }))
+    void syncBoard(
+      (currentBoard) => clearDoneFromBoard(currentBoard),
+      () =>
+        requestSupabaseBoard("/api/kanban/done", {
+          method: "DELETE",
+        })
+    )
   }
 
   function handleDragStart(event: DragStartEvent) {
+    if (isPending) {
+      return
+    }
+
     setActiveTaskId(String(event.active.id))
   }
 
@@ -337,65 +354,31 @@ export function KanbanBoard() {
 
     const activeId = String(active.id)
     const overId = String(over.id)
+    const sourceColumnId = findColumnForTask(board, activeId)
+    const targetColumnId = isColumnId(overId)
+      ? overId
+      : findColumnForTask(board, overId)
 
-    setBoard((currentBoard) => {
-      const sourceColumnId = findColumnForTask(currentBoard, activeId)
-      const targetColumnId = isColumnId(overId)
-        ? overId
-        : findColumnForTask(currentBoard, overId)
+    if (!sourceColumnId || !targetColumnId) {
+      return
+    }
 
-      if (!sourceColumnId || !targetColumnId) {
-        return currentBoard
-      }
+    const moveInput: MoveTaskInput = {
+      beforeTaskId: isColumnId(overId) ? null : overId,
+      placement: isColumnId(overId) ? "end" : "before",
+      targetColumnId,
+      taskId: activeId,
+    }
 
-      const activeTask = currentBoard[sourceColumnId].find(
-        (task) => task.id === activeId
-      )
-
-      if (!activeTask) {
-        return currentBoard
-      }
-
-      if (sourceColumnId === targetColumnId) {
-        const oldIndex = currentBoard[sourceColumnId].findIndex(
-          (task) => task.id === activeId
-        )
-        const newIndex = currentBoard[targetColumnId].findIndex(
-          (task) => task.id === overId
-        )
-
-        if (newIndex === -1 || oldIndex === newIndex) {
-          return currentBoard
-        }
-
-        return {
-          ...currentBoard,
-          [sourceColumnId]: arrayMove(
-            currentBoard[sourceColumnId],
-            oldIndex,
-            newIndex
-          ),
-        }
-      }
-
-      const targetIndex = isColumnId(overId)
-        ? currentBoard[targetColumnId].length
-        : currentBoard[targetColumnId].findIndex((task) => task.id === overId)
-      const insertAt =
-        targetIndex >= 0 ? targetIndex : currentBoard[targetColumnId].length
-
-      return {
-        ...currentBoard,
-        [sourceColumnId]: currentBoard[sourceColumnId].filter(
-          (task) => task.id !== activeId
-        ),
-        [targetColumnId]: [
-          ...currentBoard[targetColumnId].slice(0, insertAt),
-          activeTask,
-          ...currentBoard[targetColumnId].slice(insertAt),
-        ],
-      }
-    })
+    void syncBoard(
+      (currentBoard) => moveTaskInBoard(currentBoard, moveInput),
+      () =>
+        requestSupabaseBoard(`/api/kanban/tasks/${activeId}/move`, {
+          body: JSON.stringify(moveInput),
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH",
+        })
+    )
   }
 
   return (
@@ -403,6 +386,7 @@ export function KanbanBoard() {
       <div className="grid gap-4 xl:grid-cols-[minmax(280px,360px)_1fr]">
         <TaskComposer
           doneTasks={doneTasks}
+          isBusy={isPending}
           onAddTask={addTask}
           onClearDone={clearDone}
           onResetBoard={resetBoard}
@@ -419,7 +403,7 @@ export function KanbanBoard() {
               each card&apos;s menu to move it without dragging.
             </CardDescription>
             <CardAction>
-              <Badge variant="outline">Browser only</Badge>
+              <Badge variant="outline">{storageLabel}</Badge>
             </CardAction>
           </CardHeader>
           <CardContent>
@@ -443,6 +427,9 @@ export function KanbanBoard() {
                 <p>Still open</p>
               </div>
             </div>
+            <p className="mt-4 text-sm text-muted-foreground">
+              {statusMessage}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -463,6 +450,7 @@ export function KanbanBoard() {
             >
               {board[columnId].map((task) => (
                 <TaskCard
+                  disabled={isPending}
                   columnId={columnId}
                   key={task.id}
                   onDelete={deleteTask}
@@ -483,12 +471,14 @@ export function KanbanBoard() {
 
 function TaskComposer({
   doneTasks,
+  isBusy,
   onAddTask,
   onClearDone,
   onResetBoard,
   totalTasks,
 }: {
   doneTasks: number
+  isBusy: boolean
   onAddTask: (title: string, description: string) => void
   onClearDone: () => void
   onResetBoard: () => void
@@ -525,6 +515,7 @@ function TaskComposer({
           <div className="grid gap-2">
             <Label htmlFor="task-title">Task title</Label>
             <Input
+              disabled={isBusy}
               id="task-title"
               maxLength={80}
               onChange={(event) => setTitle(event.target.value)}
@@ -535,6 +526,7 @@ function TaskComposer({
           <div className="grid gap-2">
             <Label htmlFor="task-notes">Notes</Label>
             <Textarea
+              disabled={isBusy}
               id="task-notes"
               maxLength={220}
               onChange={(event) => setDescription(event.target.value)}
@@ -542,14 +534,14 @@ function TaskComposer({
               value={description}
             />
           </div>
-          <Button disabled={!title.trim()} type="submit">
+          <Button disabled={isBusy || !title.trim()} type="submit">
             <Plus />
-            Add task
+            {isBusy ? "Saving..." : "Add task"}
           </Button>
         </form>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
-            disabled={!doneTasks}
+            disabled={isBusy || !doneTasks}
             onClick={onClearDone}
             type="button"
             variant="outline"
@@ -558,7 +550,7 @@ function TaskComposer({
             Clear done
           </Button>
           <Button
-            disabled={!totalTasks}
+            disabled={isBusy || !totalTasks}
             onClick={onResetBoard}
             type="button"
             variant="ghost"
@@ -633,11 +625,13 @@ function KanbanColumn({
 
 function TaskCard({
   columnId,
+  disabled,
   onDelete,
   onMove,
   task,
 }: {
   columnId: ColumnId
+  disabled: boolean
   onDelete: (taskId: string) => void
   onMove: (taskId: string, columnId: ColumnId) => void
   task: Task
@@ -650,6 +644,7 @@ function TaskCard({
     transform,
     transition,
   } = useSortable({
+    disabled,
     id: task.id,
   })
   const style: React.CSSProperties = {
@@ -672,6 +667,7 @@ function TaskCard({
           <Button
             aria-label={`Drag ${task.title}`}
             className="mt-0.5 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
+            disabled={disabled}
             size="icon-sm"
             type="button"
             variant="ghost"
@@ -690,6 +686,7 @@ function TaskCard({
           </div>
           <TaskActions
             columnId={columnId}
+            disabled={disabled}
             onDelete={onDelete}
             onMove={onMove}
             task={task}
@@ -702,11 +699,13 @@ function TaskCard({
 
 function TaskActions({
   columnId,
+  disabled,
   onDelete,
   onMove,
   task,
 }: {
   columnId: ColumnId
+  disabled: boolean
   onDelete: (taskId: string) => void
   onMove: (taskId: string, columnId: ColumnId) => void
   task: Task
@@ -718,6 +717,7 @@ function TaskActions({
           <Button
             aria-label={`Actions for ${task.title}`}
             className="-mr-1 text-muted-foreground"
+            disabled={disabled}
             size="icon-sm"
             type="button"
             variant="ghost"
@@ -733,7 +733,7 @@ function TaskActions({
             <DropdownMenuItem
               key={targetColumnId}
               onClick={() => onMove(task.id, targetColumnId)}
-              disabled={targetColumnId === columnId}
+              disabled={disabled || targetColumnId === columnId}
             >
               <ArrowRight />
               {COLUMNS[targetColumnId].title}
@@ -742,6 +742,7 @@ function TaskActions({
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem
+          disabled={disabled}
           onClick={() => onDelete(task.id)}
           variant="destructive"
         >
