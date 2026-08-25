@@ -1,7 +1,8 @@
 # Academy Kanban
 
-A small Next.js, TypeScript, and shadcn/ui Kanban board with four columns:
-Ideas, On deck, In progress, and Done.
+A small Next.js, TypeScript, and shadcn/ui Kanban board. Its starter board uses
+Ideas, On deck, In progress, and Done, while the database accepts arbitrary
+column keys.
 
 ## Getting Started
 

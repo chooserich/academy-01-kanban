@@ -10,7 +10,7 @@ create table public.boards (
 create table public.board_columns (
   id uuid primary key default gen_random_uuid(),
   board_id uuid not null references public.boards(id) on delete cascade,
-  key text not null check (key in ('ideas', 'on-deck', 'in-progress', 'done')),
+  key text not null,
   title text not null,
   position integer not null,
   created_at timestamptz not null default now(),

@@ -92,10 +92,13 @@ or verification requirement.
   }
   ```
 
-- Columns are defined by `COLUMN_ORDER` in `lib/kanban/board.ts`:
-  `ideas`, `on-deck`, `in-progress`, and `done`.
-- Keep database, API, and local fallback behavior mapped to this product model
-  unless the product requirements intentionally change it.
+- Database column keys are arbitrary non-null text values and must only be
+  unique within their board. Do not add a fixed-name check constraint.
+- `ideas`, `on-deck`, `in-progress`, and `done` are the current starter-board
+  defaults in `lib/kanban/board.ts`, not database-enforced column names.
+- Keep database, API, and local fallback behavior mapped to the product model.
+  When column management is added, update the application-level `ColumnId` and
+  `BoardState` types so they no longer form a closed four-column set.
 
 ## Kanban Product Rules
 
