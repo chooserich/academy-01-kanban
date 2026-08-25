@@ -78,11 +78,23 @@ or verification requirement.
   because this Kanban app does not use it and the local health check can slow
   startup.
 - When Supabase is not configured or reachable, the board falls back to browser
-  `localStorage` with the storage key `kanban-board:v1`.
+  `localStorage` with the storage key `kanban-board:v2`. The parser migrates
+  the original `kanban-board:v1` four-column record when present.
 - The product-level board shape is:
 
   ```ts
-  type BoardState = Record<ColumnId, Task[]>
+  type BoardState = {
+    id: string
+    name: string
+    columns: BoardColumn[]
+  }
+
+  type BoardColumn = {
+    id: string
+    key: string
+    title: string
+    tasks: Task[]
+  }
 
   type Task = {
     id: string
@@ -96,13 +108,16 @@ or verification requirement.
   unique within their board. Do not add a fixed-name check constraint.
 - `ideas`, `on-deck`, `in-progress`, and `done` are the current starter-board
   defaults in `lib/kanban/board.ts`, not database-enforced column names.
-- Keep database, API, and local fallback behavior mapped to the product model.
-  When column management is added, update the application-level `ColumnId` and
-  `BoardState` types so they no longer form a closed four-column set.
+- Column array order is product state and maps to `board_columns.position` in
+  Postgres. Reorder all columns atomically through `reorder_board_columns`.
+- Keep database, API, and local fallback behavior mapped to this ordered model.
 
 ## Kanban Product Rules
 
-- New tasks start in `Ideas`.
+- New tasks start in the board's first column.
+- Users can add columns and reorder them by drag/drop or the column action menu.
+- Remove only empty columns, and always keep at least one column. Postgres uses
+  a restrictive task foreign key as the final guard against task loss.
 - Users can move cards by drag/drop or by the card action menu.
 - Keep persistence state explicit in the UI: Supabase when configured, browser
   fallback otherwise.

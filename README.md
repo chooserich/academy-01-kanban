@@ -2,7 +2,8 @@
 
 A small Next.js, TypeScript, and shadcn/ui Kanban board. Its starter board uses
 Ideas, On deck, In progress, and Done, while the database accepts arbitrary
-column keys.
+column keys. Columns can be added, removed when empty, and reordered from the
+dashboard.
 
 ## Getting Started
 
@@ -37,9 +38,9 @@ Copy the `API_URL` from `pnpm supabase:status` into `SUPABASE_URL`, and copy
 the `SERVICE_ROLE_KEY` into `SUPABASE_SERVICE_ROLE_KEY`. Restart `pnpm dev`
 after changing `.env.local`.
 
-The first migration creates the `Project board` and the initial sample cards.
-If Supabase is not configured or reachable, the UI keeps working with browser
-`localStorage` as a fallback.
+The migrations create the `Project board`, its initial sample cards, and the
+atomic column-ordering function. If Supabase is not configured or reachable,
+the UI keeps working with browser `localStorage` as a fallback.
 
 ## Useful Commands
 

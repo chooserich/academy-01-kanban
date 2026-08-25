@@ -1,19 +1,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 import {
-  COLUMN_ORDER,
-  COLUMN_TITLES,
   DEFAULT_BOARD_ID,
   DEFAULT_BOARD_NAME,
-  DEFAULT_COLUMN_IDS,
-  createEmptyBoard,
+  DEFAULT_COLUMNS,
+  createColumnKey,
   initialBoard,
-  isColumnId,
   type BoardState,
-  type ColumnId,
   type MovePlacement,
 } from "@/lib/kanban/board"
 import { createSupabaseAdminClient } from "@/lib/supabase/server"
+
+type DbBoard = {
+  id: string
+  name: string
+}
 
 type DbColumn = {
   id: string
@@ -43,6 +44,15 @@ export class SupabaseConfigurationError extends Error {
   }
 }
 
+export class ColumnMutationError extends Error {
+  status: number
+
+  constructor(message: string, status = 400) {
+    super(message)
+    this.status = status
+  }
+}
+
 function getSupabaseOrThrow() {
   const supabase = createSupabaseAdminClient()
 
@@ -53,12 +63,20 @@ function getSupabaseOrThrow() {
   return supabase
 }
 
+function defaultColumnRows() {
+  return DEFAULT_COLUMNS.map((column, position) => ({
+    ...column,
+    board_id: DEFAULT_BOARD_ID,
+    position,
+  }))
+}
+
 function defaultTaskRows() {
-  return COLUMN_ORDER.flatMap((columnId) =>
-    initialBoard[columnId].map((task, position) => ({
+  return initialBoard.columns.flatMap((column) =>
+    column.tasks.map((task, position) => ({
       id: task.id,
       board_id: DEFAULT_BOARD_ID,
-      column_id: DEFAULT_COLUMN_IDS[columnId],
+      column_id: column.id,
       title: task.title,
       description: task.description,
       position,
@@ -78,50 +96,56 @@ async function throwOnError(
   }
 }
 
-async function ensureDefaultBoard(supabase: SupabaseClient) {
-  await throwOnError(
-    await supabase.from("boards").upsert(
-      {
-        id: DEFAULT_BOARD_ID,
-        name: DEFAULT_BOARD_NAME,
-      },
-      { onConflict: "id" }
-    )
-  )
+async function ensureDefaultBoard(supabase: SupabaseClient): Promise<DbBoard> {
+  const { data: existingBoard, error: boardLookupError } = await supabase
+    .from("boards")
+    .select("id, name")
+    .eq("id", DEFAULT_BOARD_ID)
+    .maybeSingle<DbBoard>()
 
-  await throwOnError(
-    await supabase.from("board_columns").upsert(
-      COLUMN_ORDER.map((columnId, position) => ({
-        id: DEFAULT_COLUMN_IDS[columnId],
-        board_id: DEFAULT_BOARD_ID,
-        key: columnId,
-        title: COLUMN_TITLES[columnId],
-        position,
-      })),
-      { onConflict: "id" }
-    )
-  )
+  if (boardLookupError) {
+    throw boardLookupError
+  }
 
-  const { count, error } = await supabase
-    .from("tasks")
+  let board = existingBoard
+
+  if (!board) {
+    const { data, error } = await supabase
+      .from("boards")
+      .insert({ id: DEFAULT_BOARD_ID, name: DEFAULT_BOARD_NAME })
+      .select("id, name")
+      .single<DbBoard>()
+
+    if (error) {
+      throw error
+    }
+
+    board = data
+  }
+
+  const { count: columnCount, error: columnCountError } = await supabase
+    .from("board_columns")
     .select("id", { count: "exact", head: true })
     .eq("board_id", DEFAULT_BOARD_ID)
 
-  if (error) {
-    throw error
+  if (columnCountError) {
+    throw columnCountError
   }
 
-  if (count === 0) {
+  if (columnCount === 0) {
+    await throwOnError(await supabase.from("board_columns").insert(defaultColumnRows()))
     await throwOnError(await supabase.from("tasks").insert(defaultTaskRows()))
   }
+
+  return board
 }
 
-async function getColumnByKey(supabase: SupabaseClient, columnId: ColumnId) {
+async function getColumnById(supabase: SupabaseClient, columnId: string) {
   const { data, error } = await supabase
     .from("board_columns")
     .select("id, key, title, position")
     .eq("board_id", DEFAULT_BOARD_ID)
-    .eq("key", columnId)
+    .eq("id", columnId)
     .single<DbColumn>()
 
   if (error) {
@@ -153,9 +177,31 @@ async function compactColumn(supabase: SupabaseClient, columnId: string) {
   )
 }
 
+async function compactBoardColumns(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from("board_columns")
+    .select("id")
+    .eq("board_id", DEFAULT_BOARD_ID)
+    .order("position", { ascending: true })
+
+  if (error) {
+    throw error
+  }
+
+  for (const [position, column] of (data ?? []).entries()) {
+    await throwOnError(
+      supabase
+        .from("board_columns")
+        .update({ position })
+        .eq("board_id", DEFAULT_BOARD_ID)
+        .eq("id", column.id)
+    )
+  }
+}
+
 export async function listBoardFromSupabase(): Promise<BoardState> {
   const supabase = getSupabaseOrThrow()
-  await ensureDefaultBoard(supabase)
+  const board = await ensureDefaultBoard(supabase)
 
   const { data: columns, error: columnsError } = await supabase
     .from("board_columns")
@@ -180,29 +226,29 @@ export async function listBoardFromSupabase(): Promise<BoardState> {
     throw tasksError
   }
 
-  const columnKeyById = new Map(
-    (columns ?? [])
-      .filter((column) => isColumnId(column.key))
-      .map((column) => [column.id, column.key as ColumnId])
-  )
-  const board = createEmptyBoard()
+  const tasksByColumnId = new Map<string, DbTask[]>()
 
   for (const task of tasks ?? []) {
-    const columnId = columnKeyById.get(task.column_id)
-
-    if (!columnId) {
-      continue
-    }
-
-    board[columnId].push({
-      id: task.id,
-      title: task.title,
-      description: task.description ?? "",
-      createdAt: task.created_at,
-    })
+    const columnTasks = tasksByColumnId.get(task.column_id) ?? []
+    columnTasks.push(task)
+    tasksByColumnId.set(task.column_id, columnTasks)
   }
 
-  return board
+  return {
+    id: board.id,
+    name: board.name,
+    columns: (columns ?? []).map((column) => ({
+      id: column.id,
+      key: column.key,
+      title: column.title,
+      tasks: (tasksByColumnId.get(column.id) ?? []).map((task) => ({
+        id: task.id,
+        title: task.title,
+        description: task.description ?? "",
+        createdAt: task.created_at,
+      })),
+    })),
+  }
 }
 
 export async function createTaskInSupabase({
@@ -215,12 +261,23 @@ export async function createTaskInSupabase({
   const supabase = getSupabaseOrThrow()
   await ensureDefaultBoard(supabase)
 
-  const ideasColumn = await getColumnByKey(supabase, "ideas")
+  const { data: firstColumn, error: firstColumnError } = await supabase
+    .from("board_columns")
+    .select("id")
+    .eq("board_id", DEFAULT_BOARD_ID)
+    .order("position", { ascending: true })
+    .limit(1)
+    .single<{ id: string }>()
+
+  if (firstColumnError) {
+    throw firstColumnError
+  }
+
   const { data: latestTask, error: latestTaskError } = await supabase
     .from("tasks")
     .select("position")
     .eq("board_id", DEFAULT_BOARD_ID)
-    .eq("column_id", ideasColumn.id)
+    .eq("column_id", firstColumn.id)
     .order("position", { ascending: false })
     .limit(1)
     .maybeSingle<{ position: number }>()
@@ -232,7 +289,7 @@ export async function createTaskInSupabase({
   await throwOnError(
     await supabase.from("tasks").insert({
       board_id: DEFAULT_BOARD_ID,
-      column_id: ideasColumn.id,
+      column_id: firstColumn.id,
       title,
       description,
       position: (latestTask?.position ?? -1) + 1,
@@ -272,16 +329,17 @@ export async function deleteTaskFromSupabase(taskId: string) {
   return listBoardFromSupabase()
 }
 
-export async function clearDoneTasksInSupabase() {
+export async function clearColumnTasksInSupabase(columnId: string) {
   const supabase = getSupabaseOrThrow()
   await ensureDefaultBoard(supabase)
+  await getColumnById(supabase, columnId)
 
   await throwOnError(
     await supabase
       .from("tasks")
       .delete()
       .eq("board_id", DEFAULT_BOARD_ID)
-      .eq("column_id", DEFAULT_COLUMN_IDS.done)
+      .eq("column_id", columnId)
   )
 
   return listBoardFromSupabase()
@@ -294,7 +352,116 @@ export async function resetBoardInSupabase() {
   await throwOnError(
     await supabase.from("tasks").delete().eq("board_id", DEFAULT_BOARD_ID)
   )
+  await throwOnError(
+    await supabase.from("board_columns").delete().eq("board_id", DEFAULT_BOARD_ID)
+  )
+  await throwOnError(await supabase.from("board_columns").insert(defaultColumnRows()))
   await throwOnError(await supabase.from("tasks").insert(defaultTaskRows()))
+
+  return listBoardFromSupabase()
+}
+
+export async function createColumnInSupabase(title: string) {
+  const supabase = getSupabaseOrThrow()
+  await ensureDefaultBoard(supabase)
+
+  const { data: columns, error } = await supabase
+    .from("board_columns")
+    .select("key, position")
+    .eq("board_id", DEFAULT_BOARD_ID)
+    .order("position", { ascending: true })
+    .returns<Array<{ key: string; position: number }>>()
+
+  if (error) {
+    throw error
+  }
+
+  const key = createColumnKey(
+    title,
+    (columns ?? []).map((column) => column.key)
+  )
+  const position = columns?.length ?? 0
+
+  await throwOnError(
+    await supabase.from("board_columns").insert({
+      board_id: DEFAULT_BOARD_ID,
+      key,
+      title,
+      position,
+    })
+  )
+
+  return listBoardFromSupabase()
+}
+
+export async function deleteColumnFromSupabase(columnId: string) {
+  const supabase = getSupabaseOrThrow()
+  await ensureDefaultBoard(supabase)
+
+  const { data: columns, error: columnsError } = await supabase
+    .from("board_columns")
+    .select("id, key, title, position")
+    .eq("board_id", DEFAULT_BOARD_ID)
+    .order("position", { ascending: true })
+    .returns<DbColumn[]>()
+
+  if (columnsError) {
+    throw columnsError
+  }
+
+  const column = columns?.find((item) => item.id === columnId)
+
+  if (!column) {
+    throw new ColumnMutationError("Column not found.", 404)
+  }
+
+  if ((columns?.length ?? 0) <= 1) {
+    throw new ColumnMutationError("A board must keep at least one column.", 409)
+  }
+
+  const { data: firstTask, error: taskLookupError } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("board_id", DEFAULT_BOARD_ID)
+    .eq("column_id", columnId)
+    .limit(1)
+    .maybeSingle<{ id: string }>()
+
+  if (taskLookupError) {
+    throw taskLookupError
+  }
+
+  if (firstTask) {
+    throw new ColumnMutationError(
+      "Move or delete this column's tasks before removing it.",
+      409
+    )
+  }
+
+  await throwOnError(
+    await supabase
+      .from("board_columns")
+      .delete()
+      .eq("board_id", DEFAULT_BOARD_ID)
+      .eq("id", columnId)
+  )
+  await compactBoardColumns(supabase)
+
+  return listBoardFromSupabase()
+}
+
+export async function reorderColumnsInSupabase(columnIds: string[]) {
+  const supabase = getSupabaseOrThrow()
+  await ensureDefaultBoard(supabase)
+
+  const { error } = await supabase.rpc("reorder_board_columns", {
+    p_board_id: DEFAULT_BOARD_ID,
+    p_column_ids: columnIds,
+  })
+
+  if (error) {
+    throw error
+  }
 
   return listBoardFromSupabase()
 }
@@ -306,14 +473,14 @@ export async function moveTaskInSupabase({
   taskId,
 }: {
   taskId: string
-  targetColumnId: ColumnId
+  targetColumnId: string
   placement: MovePlacement
   beforeTaskId?: string | null
 }) {
   const supabase = getSupabaseOrThrow()
   await ensureDefaultBoard(supabase)
 
-  const targetColumn = await getColumnByKey(supabase, targetColumnId)
+  const targetColumn = await getColumnById(supabase, targetColumnId)
   const { data: task, error: taskError } = await supabase
     .from("tasks")
     .select("id, column_id")

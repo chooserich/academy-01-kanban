@@ -22,7 +22,7 @@ create table public.board_columns (
 create table public.tasks (
   id uuid primary key default gen_random_uuid(),
   board_id uuid not null references public.boards(id) on delete cascade,
-  column_id uuid not null references public.board_columns(id) on delete cascade,
+  column_id uuid not null references public.board_columns(id) on delete restrict,
   title text not null check (char_length(title) between 1 and 80),
   description text not null default '' check (char_length(description) <= 220),
   position integer not null default 0,

@@ -14,7 +14,7 @@ export default function Page() {
       }
     >
       <AppSidebar variant="inset" />
-      <SidebarInset>
+      <SidebarInset className="min-w-0">
         <SiteHeader />
         <KanbanBoard />
       </SidebarInset>

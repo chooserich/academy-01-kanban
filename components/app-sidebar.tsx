@@ -16,15 +16,11 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import {
-  CircleCheckIcon,
   CircleHelpIcon,
   CommandIcon,
   DatabaseZapIcon,
   KanbanIcon,
-  LightbulbIcon,
-  LoaderCircleIcon,
   SearchIcon,
-  SquareKanbanIcon,
 } from "lucide-react"
 
 const data = {
@@ -33,26 +29,6 @@ const data = {
       title: "Project board",
       url: "/dashboard",
       icon: <KanbanIcon />,
-    },
-    {
-      title: "Ideas",
-      url: "#ideas",
-      icon: <LightbulbIcon />,
-    },
-    {
-      title: "On deck",
-      url: "#on-deck",
-      icon: <SquareKanbanIcon />,
-    },
-    {
-      title: "In progress",
-      url: "#in-progress",
-      icon: <LoaderCircleIcon />,
-    },
-    {
-      title: "Done",
-      url: "#done",
-      icon: <CircleCheckIcon />,
     },
   ],
   navSecondary: [

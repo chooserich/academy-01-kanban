@@ -1,7 +1,4 @@
-import {
-  isColumnId,
-  type MovePlacement,
-} from "@/lib/kanban/board"
+import { type MovePlacement } from "@/lib/kanban/board"
 import { moveTaskInSupabase } from "@/lib/kanban/supabase-store"
 
 function isMovePlacement(value: unknown): value is MovePlacement {
@@ -19,7 +16,7 @@ export async function PATCH(
     targetColumnId?: unknown
   } | null
   const targetColumnId =
-    typeof body?.targetColumnId === "string" && isColumnId(body.targetColumnId)
+    typeof body?.targetColumnId === "string" && body.targetColumnId
       ? body.targetColumnId
       : null
   const placement = isMovePlacement(body?.placement) ? body.placement : "start"
