@@ -53,6 +53,37 @@ pnpm supabase:reset
 pnpm supabase:stop
 ```
 
+## Production Deployment
+
+`.github/workflows/production.yml` runs whenever a commit reaches `main`. It
+links the production Supabase project, previews pending migrations, and applies
+them with `supabase db push`.
+
+Add these encrypted repository secrets in GitHub under **Settings > Secrets and
+variables > Actions**:
+
+```text
+SUPABASE_ACCESS_TOKEN
+SUPABASE_DB_PASSWORD
+SUPABASE_PROJECT_ID
+```
+
+In Vercel, add the GitHub check named **Migrate production database** as a
+required Production Deployment Check. Vercel can build the commit immediately,
+but it will not promote that build to the production domain until the migration
+check passes. The workflow can also be run manually from GitHub Actions.
+
+Use a fresh hosted Supabase project when possible. If the target project
+already has tables created outside these migration files, reconcile its schema
+and migration history before merging; the dry run is the checkpoint for that.
+
+Never use `supabase db reset --linked` or `supabase db push --include-seed`
+against production.
+
+> **Access warning:** The current API routes do not authenticate visitors. A
+> live deployment is one publicly writable shared board. Add authentication or
+> Vercel deployment protection before storing private data.
+
 ## Notes
 
 This project uses Geist Sans and Geist Mono through `next/font/google`. Keep

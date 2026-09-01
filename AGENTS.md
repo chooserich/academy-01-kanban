@@ -132,3 +132,23 @@ or verification requirement.
   not just TypeScript compilation.
 - When testing the current app locally, use the dev server URL reported by
   Next.js. If port `3000` is occupied, Next may use another port such as `3001`.
+
+## Production Releases
+
+- `.github/workflows/production.yml` applies pending Supabase migrations after
+  a commit reaches `main`.
+- Keep the GitHub check named `Migrate production database` stable and require
+  it in Vercel Production Deployment Checks. Without that check, Vercel's Git
+  deployment and the migration action race each other.
+- Store `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, and
+  `SUPABASE_PROJECT_ID` as encrypted GitHub Actions secrets. Never commit them
+  or expose the Supabase service-role key to browser code.
+- Add schema changes as new timestamped migration files. Do not rewrite a
+  migration after it has been applied to production.
+- Production migrations must remain backward-compatible with the currently
+  deployed app because the database updates before the new deployment becomes
+  active. Use an expand-and-contract sequence for destructive schema changes.
+- Never run `supabase db reset --linked` or `supabase db push --include-seed`
+  against production.
+- The deployed app is currently a publicly writable, single shared board. Do
+  not treat it as private until authentication and authorization are added.
