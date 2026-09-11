@@ -55,8 +55,14 @@ list, including Preview URLs if they should support sign-in:
 
 ```text
 http://localhost:3000/auth/callback
-https://your-production-domain.example/auth/callback
+https://academy-01-kanban.vercel.app/auth/callback
+https://academy-01-kanban-*-nick-oneills-projects.vercel.app/**
 ```
+
+Set the hosted Supabase **Site URL** to
+`https://academy-01-kanban.vercel.app`. Supabase falls back to this URL when a
+requested redirect is not allowlisted, so leaving it set to localhost will
+send production confirmation links back to a local server.
 
 Hosted projects normally require email confirmation. Configure custom SMTP
 before relying on confirmation and password-reset email in production.

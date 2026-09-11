@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { LoaderCircleIcon } from "lucide-react"
+import { LoaderCircleIcon, MailCheckIcon } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
@@ -31,6 +31,7 @@ export function LoginForm({
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [message, setMessage] = React.useState(initialMessage ?? "")
   const [isError, setIsError] = React.useState(Boolean(initialMessage))
+  const [confirmationEmail, setConfirmationEmail] = React.useState("")
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -85,9 +86,43 @@ export function LoginForm({
       return
     }
 
-    setMessage("Check your email to confirm your account, then return to sign in.")
-    setIsError(false)
+    setConfirmationEmail(email)
     setIsSubmitting(false)
+  }
+
+  if (confirmationEmail) {
+    return (
+      <div aria-live="polite" className="grid gap-5 py-2" role="status">
+        <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-foreground">
+          <MailCheckIcon className="size-5" />
+        </div>
+        <div className="grid gap-2">
+          <h2 className="font-heading text-lg font-semibold">Check your inbox</h2>
+          <p className="text-sm text-muted-foreground">
+            We sent a confirmation link to
+          </p>
+          <p className="break-all text-sm font-medium text-foreground">
+            {confirmationEmail}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Open the link to confirm your account and continue to your private board.
+          </p>
+        </div>
+        <Button
+          className="w-full"
+          onClick={() => {
+            setConfirmationEmail("")
+            setMode("sign-in")
+            setMessage("")
+            setIsError(false)
+          }}
+          type="button"
+          variant="outline"
+        >
+          Back to sign in
+        </Button>
+      </div>
+    )
   }
 
   return (

@@ -76,6 +76,10 @@ or verification requirement.
 - Supabase Auth uses email/password with SSR cookie sessions from
   `@supabase/ssr`. Validate server identities with `auth.getClaims()` rather
   than trusting `auth.getSession()`.
+- Hosted Supabase Auth uses `https://academy-01-kanban.vercel.app` as its Site
+  URL. Keep the canonical `/auth/callback`, the Vercel Preview wildcard, and
+  `http://localhost:3000/**` in the redirect allowlist so confirmation and
+  recovery links return to the environment that initiated them.
 - The initial schema, hidden starter template, and ownership policies live in
   `supabase/migrations/`.
 - Local Supabase uses the `565xx` port block in `supabase/config.toml` to avoid
