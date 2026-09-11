@@ -1,4 +1,5 @@
 import { type MovePlacement } from "@/lib/kanban/board"
+import { kanbanErrorResponse } from "@/lib/kanban/api"
 import { moveTaskInSupabase } from "@/lib/kanban/supabase-store"
 
 function isMovePlacement(value: unknown): value is MovePlacement {
@@ -40,11 +41,10 @@ export async function PATCH(
 
     return Response.json({ board })
   } catch (error) {
-    console.error("Failed to move Supabase task", error)
-
-    return Response.json(
-      { message: "Failed to move the task in Supabase." },
-      { status: 500 }
+    return kanbanErrorResponse(
+      error,
+      "Failed to move Supabase task",
+      "Failed to move the task in Supabase."
     )
   }
 }

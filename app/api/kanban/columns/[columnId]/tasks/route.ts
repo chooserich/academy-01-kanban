@@ -1,4 +1,5 @@
 import { clearColumnTasksInSupabase } from "@/lib/kanban/supabase-store"
+import { kanbanErrorResponse } from "@/lib/kanban/api"
 
 export async function DELETE(
   _request: Request,
@@ -10,10 +11,10 @@ export async function DELETE(
     const board = await clearColumnTasksInSupabase(columnId)
     return Response.json({ board })
   } catch (error) {
-    console.error("Failed to clear Supabase column", error)
-    return Response.json(
-      { message: "Failed to clear the column in Supabase." },
-      { status: 500 }
+    return kanbanErrorResponse(
+      error,
+      "Failed to clear Supabase column",
+      "Failed to clear the column in Supabase."
     )
   }
 }

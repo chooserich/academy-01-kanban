@@ -1,4 +1,5 @@
 import { deleteTaskFromSupabase } from "@/lib/kanban/supabase-store"
+import { kanbanErrorResponse } from "@/lib/kanban/api"
 
 export async function DELETE(
   _request: Request,
@@ -11,11 +12,10 @@ export async function DELETE(
 
     return Response.json({ board })
   } catch (error) {
-    console.error("Failed to delete Supabase task", error)
-
-    return Response.json(
-      { message: "Failed to delete the task in Supabase." },
-      { status: 500 }
+    return kanbanErrorResponse(
+      error,
+      "Failed to delete Supabase task",
+      "Failed to delete the task in Supabase."
     )
   }
 }

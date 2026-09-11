@@ -20,6 +20,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
   ArrowRight,
@@ -87,6 +88,7 @@ import {
   deleteTaskFromBoard,
   findColumn,
   findTask,
+  getUserKanbanStorageKey,
   moveTaskInBoard,
   normalizeBoard,
   parseStoredBoard,
@@ -207,7 +209,8 @@ async function requestSupabaseBoard(
   return board
 }
 
-export function KanbanBoard() {
+export function KanbanBoard({ userId }: { userId: string }) {
+  const router = useRouter()
   const [board, setBoard] = React.useState<BoardState>(() => cloneInitialBoard())
   const [activeDrag, setActiveDrag] = React.useState<DragData | null>(null)
   const [columnToRemove, setColumnToRemove] =
@@ -217,6 +220,7 @@ export function KanbanBoard() {
   const [statusMessage, setStatusMessage] = React.useState(
     "Connecting to Supabase..."
   )
+  const userStorageKey = getUserKanbanStorageKey(userId)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -237,11 +241,23 @@ export function KanbanBoard() {
         return
       }
 
-      const storedBoard =
-        parseStoredBoard(window.localStorage.getItem(KANBAN_STORAGE_KEY)) ??
-        parseStoredBoard(
-          window.localStorage.getItem(LEGACY_KANBAN_STORAGE_KEY)
-        )
+      let storedBoard = parseStoredBoard(
+        window.localStorage.getItem(userStorageKey)
+      )
+
+      if (!storedBoard) {
+        storedBoard =
+          parseStoredBoard(window.localStorage.getItem(KANBAN_STORAGE_KEY)) ??
+          parseStoredBoard(
+            window.localStorage.getItem(LEGACY_KANBAN_STORAGE_KEY)
+          )
+
+        if (storedBoard) {
+          window.localStorage.setItem(userStorageKey, JSON.stringify(storedBoard))
+          window.localStorage.removeItem(KANBAN_STORAGE_KEY)
+          window.localStorage.removeItem(LEGACY_KANBAN_STORAGE_KEY)
+        }
+      }
 
       setBoard(storedBoard ?? cloneInitialBoard())
       setStorageMode("browser")
@@ -256,6 +272,11 @@ export function KanbanBoard() {
         const payload = await readJsonResponse(response)
 
         if (!response.ok) {
+          if (response.status === 401) {
+            router.replace("/login")
+            return
+          }
+
           throw new Error(payload.message ?? "Supabase could not be reached.")
         }
 
@@ -285,13 +306,13 @@ export function KanbanBoard() {
     return () => {
       didCancel = true
     }
-  }, [])
+  }, [router, userStorageKey])
 
   React.useEffect(() => {
     if (storageMode === "browser") {
-      window.localStorage.setItem(KANBAN_STORAGE_KEY, JSON.stringify(board))
+      window.localStorage.setItem(userStorageKey, JSON.stringify(board))
     }
-  }, [board, storageMode])
+  }, [board, storageMode, userStorageKey])
 
   const activeTask =
     activeDrag?.type === "task" ? findTask(board, activeDrag.taskId) : null
@@ -334,6 +355,12 @@ export function KanbanBoard() {
       setStatusMessage("Synced through Supabase Postgres.")
       return true
     } catch (error) {
+      if (error instanceof KanbanRequestError && error.status === 401) {
+        setBoard(previousBoard)
+        router.replace("/login")
+        return false
+      }
+
       if (error instanceof KanbanRequestError && error.status < 500) {
         setBoard(previousBoard)
         setStatusMessage(error.message)

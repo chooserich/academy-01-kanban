@@ -1,4 +1,5 @@
 import { createTaskInSupabase } from "@/lib/kanban/supabase-store"
+import { kanbanErrorResponse } from "@/lib/kanban/api"
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
@@ -18,11 +19,10 @@ export async function POST(request: Request) {
 
     return Response.json({ board })
   } catch (error) {
-    console.error("Failed to create Supabase task", error)
-
-    return Response.json(
-      { message: "Failed to create the task in Supabase." },
-      { status: 500 }
+    return kanbanErrorResponse(
+      error,
+      "Failed to create Supabase task",
+      "Failed to create the task in Supabase."
     )
   }
 }

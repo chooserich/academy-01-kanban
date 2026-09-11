@@ -1,4 +1,5 @@
 import { resetBoardInSupabase } from "@/lib/kanban/supabase-store"
+import { kanbanErrorResponse } from "@/lib/kanban/api"
 
 export async function POST() {
   try {
@@ -6,11 +7,10 @@ export async function POST() {
 
     return Response.json({ board })
   } catch (error) {
-    console.error("Failed to reset Supabase board", error)
-
-    return Response.json(
-      { message: "Failed to reset the Supabase board." },
-      { status: 500 }
+    return kanbanErrorResponse(
+      error,
+      "Failed to reset Supabase board",
+      "Failed to reset the Supabase board."
     )
   }
 }

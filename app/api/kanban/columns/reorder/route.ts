@@ -1,4 +1,5 @@
 import { reorderColumnsInSupabase } from "@/lib/kanban/supabase-store"
+import { kanbanErrorResponse } from "@/lib/kanban/api"
 
 export async function PATCH(request: Request) {
   const body = (await request.json().catch(() => null)) as {
@@ -24,10 +25,10 @@ export async function PATCH(request: Request) {
     const board = await reorderColumnsInSupabase(columnIds)
     return Response.json({ board })
   } catch (error) {
-    console.error("Failed to reorder Supabase columns", error)
-    return Response.json(
-      { message: "Failed to reorder the columns in Supabase." },
-      { status: 500 }
+    return kanbanErrorResponse(
+      error,
+      "Failed to reorder Supabase columns",
+      "Failed to reorder the columns in Supabase."
     )
   }
 }

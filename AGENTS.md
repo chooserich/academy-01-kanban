@@ -67,19 +67,25 @@ or verification requirement.
 
 - Supabase-backed Postgres is the intended persistence layer for this project.
 - The app uses Next.js API routes under `app/api/kanban/` for all writes and
-  reads. Do not expose the service-role key to browser code.
-- The required server environment variables are `SUPABASE_URL` and
-  `SUPABASE_SERVICE_ROLE_KEY`. `NEXT_PUBLIC_SUPABASE_URL` and
-  `NEXT_PUBLIC_SUPABASE_ANON_KEY` are reserved for future client-side auth or
-  realtime work.
-- The initial schema and default board live in `supabase/migrations/`.
+  reads. Requests use the signed-in user's cookie session and database RLS;
+  the application does not use a service-role key.
+- The required environment variables are `NEXT_PUBLIC_SUPABASE_URL` and
+  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. The legacy
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` name is supported for local and older
+  Supabase projects.
+- Supabase Auth uses email/password with SSR cookie sessions from
+  `@supabase/ssr`. Validate server identities with `auth.getClaims()` rather
+  than trusting `auth.getSession()`.
+- The initial schema, hidden starter template, and ownership policies live in
+  `supabase/migrations/`.
 - Local Supabase uses the `565xx` port block in `supabase/config.toml` to avoid
   colliding with other local Supabase projects. Analytics is disabled locally
   because this Kanban app does not use it and the local health check can slow
   startup.
-- When Supabase is not configured or reachable, the board falls back to browser
-  `localStorage` with the storage key `kanban-board:v2`. The parser migrates
-  the original `kanban-board:v1` four-column record when present.
+- When Supabase is temporarily unreachable for an authenticated user, the board
+  falls back to browser `localStorage` under `kanban-board:v2:<user-id>`. The
+  first authenticated user on an existing browser claims and removes the old
+  unscoped `kanban-board:v2` or `kanban-board:v1` record.
 - The product-level board shape is:
 
   ```ts
@@ -107,10 +113,15 @@ or verification requirement.
 - Database column keys are arbitrary non-null text values and must only be
   unique within their board. Do not add a fixed-name check constraint.
 - `ideas`, `on-deck`, `in-progress`, and `done` are the current starter-board
-  defaults in `lib/kanban/board.ts`, not database-enforced column names.
+  template in `lib/kanban/board.ts`, not database-enforced column names.
 - Column array order is product state and maps to `board_columns.position` in
   Postgres. Reorder all columns atomically through `reorder_board_columns`.
 - Keep database, API, and local fallback behavior mapped to this ordered model.
+- Boards are private to `boards.owner_id`. Columns and tasks inherit ownership
+  through `board_id`, and database RLS is the final authorization boundary.
+- The original fixed board row is a hidden template. `ensure_user_board`
+  snapshots it only for a user's first board. Future additional boards should
+  start empty rather than cloning the template.
 
 ## Kanban Product Rules
 
@@ -150,5 +161,5 @@ or verification requirement.
   active. Use an expand-and-contract sequence for destructive schema changes.
 - Never run `supabase db reset --linked` or `supabase db push --include-seed`
   against production.
-- The deployed app is currently a publicly writable, single shared board. Do
-  not treat it as private until authentication and authorization are added.
+- Configure Supabase Auth redirect URLs and the Vercel Preview/Production public
+  URL and publishable key before deploying authentication changes.
