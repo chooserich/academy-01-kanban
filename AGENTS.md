@@ -43,6 +43,9 @@ or verification requirement.
 - Wrap tooltip-using surfaces with `TooltipProvider`; the root layout already
   does this.
 - Use Lucide icons for UI actions and navigation when an icon is needed.
+- Theme selection uses `next-themes` with the `class` attribute and defaults to
+  the system preference. Keep Light, Dark, and System available from the user
+  menu, and keep `suppressHydrationWarning` on the root `<html>` element.
 
 ## Font Requirements
 
