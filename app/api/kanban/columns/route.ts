@@ -1,4 +1,5 @@
 import { createColumnInSupabase } from "@/lib/kanban/supabase-store"
+import { kanbanErrorResponse } from "@/lib/kanban/api"
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
@@ -24,10 +25,10 @@ export async function POST(request: Request) {
     const board = await createColumnInSupabase(title)
     return Response.json({ board })
   } catch (error) {
-    console.error("Failed to create Supabase column", error)
-    return Response.json(
-      { message: "Failed to create the column in Supabase." },
-      { status: 500 }
+    return kanbanErrorResponse(
+      error,
+      "Failed to create Supabase column",
+      "Failed to create the column in Supabase."
     )
   }
 }

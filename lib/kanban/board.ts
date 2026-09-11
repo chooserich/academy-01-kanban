@@ -30,6 +30,10 @@ export type MoveTaskInput = {
 export const KANBAN_STORAGE_KEY = "kanban-board:v2"
 export const LEGACY_KANBAN_STORAGE_KEY = "kanban-board:v1"
 
+export function getUserKanbanStorageKey(userId: string) {
+  return `${KANBAN_STORAGE_KEY}:${userId}`
+}
+
 export const DEFAULT_BOARD_ID = "00000000-0000-4000-8000-000000000001"
 export const DEFAULT_BOARD_NAME = "Project board"
 

@@ -2,6 +2,7 @@ import {
   ColumnMutationError,
   deleteColumnFromSupabase,
 } from "@/lib/kanban/supabase-store"
+import { kanbanErrorResponse } from "@/lib/kanban/api"
 
 export async function DELETE(
   _request: Request,
@@ -17,10 +18,10 @@ export async function DELETE(
       return Response.json({ message: error.message }, { status: error.status })
     }
 
-    console.error("Failed to delete Supabase column", error)
-    return Response.json(
-      { message: "Failed to delete the column in Supabase." },
-      { status: 500 }
+    return kanbanErrorResponse(
+      error,
+      "Failed to delete Supabase column",
+      "Failed to delete the column in Supabase."
     )
   }
 }

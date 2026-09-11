@@ -17,14 +17,19 @@ pnpm dev
 Open the local URL reported by Next.js, usually
 [http://localhost:3000/dashboard](http://localhost:3000/dashboard).
 
-## Supabase Persistence
+## Supabase Authentication and Persistence
 
-The app uses Supabase Postgres when these values are present in `.env.local`:
+Each signed-in user gets a private board backed by Supabase Postgres. The first
+board is copied from the starter template; future board-creation support can
+create additional empty boards. Set these values in `.env.local`:
 
 ```bash
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 ```
+
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` is also accepted for local and older Supabase
+projects. The service-role key is not used by the app.
 
 To run Supabase locally:
 
@@ -34,13 +39,27 @@ pnpm supabase:status
 pnpm supabase:reset
 ```
 
-Copy the `API_URL` from `pnpm supabase:status` into `SUPABASE_URL`, and copy
-the `SERVICE_ROLE_KEY` into `SUPABASE_SERVICE_ROLE_KEY`. Restart `pnpm dev`
-after changing `.env.local`.
+Copy the `API_URL` from `pnpm supabase:status` into
+`NEXT_PUBLIC_SUPABASE_URL`. If local status reports `ANON_KEY`, copy it into
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`. Restart `pnpm dev` after changing
+`.env.local`.
 
-The migrations create the `Project board`, its initial sample cards, and the
-atomic column-ordering function. If Supabase is not configured or reachable,
-the UI keeps working with browser `localStorage` as a fallback.
+The migrations keep the original `Project board` as a hidden template and add
+row-level security for user-owned boards, columns, and tasks. If Supabase
+becomes temporarily unreachable after a user has signed in, the UI uses an
+account-scoped browser fallback.
+
+For hosted Supabase, configure **Authentication > URL Configuration** with the
+production site URL and add this app's callback URLs to the redirect allow
+list, including Preview URLs if they should support sign-in:
+
+```text
+http://localhost:3000/auth/callback
+https://your-production-domain.example/auth/callback
+```
+
+Hosted projects normally require email confirmation. Configure custom SMTP
+before relying on confirmation and password-reset email in production.
 
 ## Useful Commands
 
@@ -80,9 +99,9 @@ and migration history before merging; the dry run is the checkpoint for that.
 Never use `supabase db reset --linked` or `supabase db push --include-seed`
 against production.
 
-> **Access warning:** The current API routes do not authenticate visitors. A
-> live deployment is one publicly writable shared board. Add authentication or
-> Vercel deployment protection before storing private data.
+Add the public Supabase URL and publishable key to both Vercel Preview and
+Production environments. A service-role key is neither required nor read by
+the deployed application.
 
 ## Notes
 

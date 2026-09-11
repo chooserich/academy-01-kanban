@@ -4,6 +4,7 @@ import * as React from "react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
+import { NavUser } from "@/components/nav-user"
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -45,7 +46,14 @@ const data = {
   ],
 }
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({
+  user,
+  ...props
+}: React.ComponentProps<typeof Sidebar> & {
+  user: { email: string }
+}) {
+  const displayName = user.email.split("@")[0] || "Kanban user"
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -73,10 +81,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <DatabaseZapIcon className="size-4" />
                 Persistence
               </div>
-              Supabase when configured, browser fallback otherwise.
+              Private Supabase board with an account-scoped browser fallback.
             </div>
           </SidebarGroupContent>
         </SidebarGroup>
+        <NavUser
+          user={{
+            email: user.email,
+            name: displayName,
+          }}
+        />
       </SidebarFooter>
     </Sidebar>
   )

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Kanban Board",
-  description: "A local Kanban board built with Next.js and shadcn/ui.",
+  description: "A private Kanban board built with Next.js and shadcn/ui.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

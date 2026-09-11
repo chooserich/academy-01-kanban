@@ -13,7 +13,7 @@ export function SiteHeader() {
         <div className="flex min-w-0 flex-col">
           <h1 className="truncate text-base font-medium">Project board</h1>
           <p className="hidden text-xs text-muted-foreground sm:block">
-            Local Kanban workspace
+            Private Kanban workspace
           </p>
         </div>
       </div>

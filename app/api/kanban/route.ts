@@ -1,18 +1,19 @@
 import { getSupabaseConfigStatus } from "@/lib/supabase/server"
-import {
-  SupabaseConfigurationError,
-  listBoardFromSupabase,
-} from "@/lib/kanban/supabase-store"
+import { kanbanErrorResponse } from "@/lib/kanban/api"
+import { listBoardFromSupabase } from "@/lib/kanban/supabase-store"
 
 export async function GET() {
   const config = getSupabaseConfigStatus()
 
   if (!config.isConfigured) {
-    return Response.json({
-      configured: false,
-      message:
-        "Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to enable database persistence.",
-    })
+    return Response.json(
+      {
+        configured: false,
+        message:
+          "Supabase Auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
+      },
+      { status: 503 }
+    )
   }
 
   try {
@@ -23,24 +24,10 @@ export async function GET() {
       configured: true,
     })
   } catch (error) {
-    if (error instanceof SupabaseConfigurationError) {
-      return Response.json(
-        {
-          configured: false,
-          message: error.message,
-        },
-        { status: 503 }
-      )
-    }
-
-    console.error("Failed to load Supabase board", error)
-
-    return Response.json(
-      {
-        configured: true,
-        message: "Failed to load the Supabase board.",
-      },
-      { status: 500 }
+    return kanbanErrorResponse(
+      error,
+      "Failed to load Supabase board",
+      "Failed to load the Supabase board."
     )
   }
 }
